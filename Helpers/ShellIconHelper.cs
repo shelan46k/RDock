@@ -26,19 +26,37 @@ public static class ShellIconHelper
         if (string.IsNullOrWhiteSpace(path))
             return null;
 
+        size = Math.Max(48, size);
+
         try
         {
-            // 對捷徑：圖示仍從 .lnk 本身取（Shell 會解析捷徑圖示），
-            // 若失敗再退回目標路徑。
+            // 捷徑：優先用捷徑內指定的圖示檔＋索引（跟桌面顯示一致）
+            if (IsShortcut(path) && TryResolveShortcut(path, out var shortcut))
+            {
+                BitmapSource? fromShortcutIcon = null;
+                if (!string.IsNullOrWhiteSpace(shortcut.IconPath) && File.Exists(shortcut.IconPath))
+                {
+                    fromShortcutIcon = ShellIconPicker.ExtractIcon(
+                        shortcut.IconPath, shortcut.IconIndex, size);
+                }
+
+                // 沒有自訂圖示路徑時，直接從 .lnk 擷取
+                fromShortcutIcon ??= ShellIconPicker.ExtractIcon(path, 0, size);
+
+                if (fromShortcutIcon is not null)
+                    return IconImageHelper.NormalizeToSquare(fromShortcutIcon, size);
+
+                if (!string.IsNullOrWhiteSpace(shortcut.TargetPath))
+                {
+                    var fromTarget = ExtractViaShellItemImageFactory(shortcut.TargetPath, size);
+                    if (fromTarget is not null)
+                        return IconImageHelper.NormalizeToSquare(fromTarget, size);
+                }
+            }
+
             var bitmap = ExtractViaShellItemImageFactory(path, size);
             if (bitmap is not null)
-                return bitmap;
-
-            if (IsShortcut(path) && TryResolveShortcut(path, out var resolved) &&
-                !string.IsNullOrWhiteSpace(resolved.TargetPath))
-            {
-                return ExtractViaShellItemImageFactory(resolved.TargetPath, size);
-            }
+                return IconImageHelper.NormalizeToSquare(bitmap, size);
         }
         catch (Exception ex)
         {
@@ -78,13 +96,19 @@ public static class ShellIconHelper
             link.GetWorkingDirectory(dirBuf, dirBuf.Capacity);
             link.GetDescription(descBuf, descBuf.Capacity);
 
+            var iconBuf = new StringBuilder(260);
+            link.GetIconLocation(iconBuf, iconBuf.Capacity, out int iconIndex);
+
             info = new ShortcutInfo(
                 TargetPath: pathBuf.ToString(),
                 Arguments: argsBuf.ToString(),
                 WorkingDirectory: dirBuf.ToString(),
-                Description: descBuf.ToString());
+                Description: descBuf.ToString(),
+                IconPath: iconBuf.ToString(),
+                IconIndex: iconIndex);
 
-            return !string.IsNullOrWhiteSpace(info.TargetPath);
+            return !string.IsNullOrWhiteSpace(info.TargetPath) ||
+                   !string.IsNullOrWhiteSpace(info.IconPath);
         }
         catch (Exception ex)
         {
@@ -437,4 +461,6 @@ public readonly record struct ShortcutInfo(
     string TargetPath,
     string Arguments,
     string WorkingDirectory,
-    string Description);
+    string Description,
+    string IconPath = "",
+    int IconIndex = 0);

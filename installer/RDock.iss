@@ -1,10 +1,10 @@
 ; RDock 安裝腳本（Inno Setup 6）
 ; 1. 先執行專案根目錄的 scripts\publish.ps1
 ; 2. 用 Inno Setup Compiler 開啟本檔並 Compile
-; 輸出：publish\installer\RDock-Setup-1.0.0.exe
+; 輸出：publish\installer\RDock-Setup-1.0.4.exe
 
 #define MyAppName "RDock"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "Rank"
 #define MyAppURL "https://github.com/shelan46k/RDock"
 #define MyAppExeName "RDock.exe"

@@ -48,7 +48,8 @@ public static class IconCacheService
             // 忽略狀態讀取失敗，仍用路徑雜湊
         }
 
-        string payload = $"{normalized}|{stamp}|{length}|{size}";
+        // v3：圖示會裁透明邊再放大；變更後強制重建快取，避免沿用舊的「很小」圖
+        string payload = $"v3|{normalized}|{stamp}|{length}|{size}";
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(payload));
         return Convert.ToHexString(hash).ToLowerInvariant()[..32];
     }
@@ -113,7 +114,7 @@ public static class IconCacheService
         return path;
     }
 
-    /// <summary>以指定雜湊／檔名儲存（自訂圖示用）。</summary>
+    /// <summary>以指定雜湊／檔名儲存（自訂圖示用）；會先正規化尺寸。</summary>
     public static async Task<string> SaveToPathAsync(
         BitmapSource source,
         string absolutePath,
@@ -126,28 +127,40 @@ public static class IconCacheService
         await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
-            WritePng(source, absolutePath);
+            BitmapSource normalized = IconImageHelper.NormalizeToSquare(source, DefaultSize);
+            WritePng(normalized, absolutePath);
         }, ct).ConfigureAwait(false);
 
         return absolutePath;
     }
 
-    /// <summary>複製使用者自訂圖示到 Custom 目錄。</summary>
+    /// <summary>複製／正規化使用者自訂圖示到 Custom 目錄（去掉透明邊並放大）。</summary>
     public static async Task<string> ImportCustomAsync(
         string sourceFile,
         string itemId,
         CancellationToken ct = default)
     {
         Directory.CreateDirectory(CustomDirectory);
-        string ext = Path.GetExtension(sourceFile);
-        if (string.IsNullOrWhiteSpace(ext))
-            ext = ".png";
+        string dest = Path.Combine(CustomDirectory, $"{itemId}_custom.png");
 
-        string dest = Path.Combine(CustomDirectory, $"{itemId}_custom{ext}");
         await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
-            File.Copy(sourceFile, dest, overwrite: true);
+            BitmapSource? loaded = LoadFromFile(sourceFile, DefaultSize);
+            if (loaded is null)
+            {
+                // 後備：直接複製原檔
+                string ext = Path.GetExtension(sourceFile);
+                if (string.IsNullOrWhiteSpace(ext))
+                    ext = ".png";
+                string fallback = Path.Combine(CustomDirectory, $"{itemId}_custom{ext}");
+                File.Copy(sourceFile, fallback, overwrite: true);
+                dest = fallback;
+                return;
+            }
+
+            BitmapSource normalized = IconImageHelper.NormalizeToSquare(loaded, DefaultSize);
+            WritePng(normalized, dest);
         }, ct).ConfigureAwait(false);
 
         return dest;

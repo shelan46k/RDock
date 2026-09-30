@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     private readonly List<Border> _icons = [];
     private readonly DispatcherTimer _hideTimer;
     private readonly DispatcherTimer _edgeProbeTimer;
+    private readonly DispatcherTimer _leaveProbeTimer;
     private readonly List<DockItem> _items = [];
     private readonly DispatcherTimer _recycleBinTimer;
     private readonly DispatcherTimer _clockTimer;
@@ -131,6 +132,10 @@ public partial class MainWindow : Window
 
         _edgeProbeTimer = new DispatcherTimer { Interval = EdgeProbeActive };
         _edgeProbeTimer.Tick += EdgeProbeTimer_Tick;
+
+        // 跨螢幕時 MouseLeave / IsMouseOver 常失效；顯示中輪詢游標是否真的離開
+        _leaveProbeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _leaveProbeTimer.Tick += LeaveProbeTimer_Tick;
 
         _recycleBinTimer = new DispatcherTimer { Interval = RecycleBinActive };
         _recycleBinTimer.Tick += (_, _) => _ = RefreshRecycleBinAsync();
@@ -274,7 +279,7 @@ public partial class MainWindow : Window
         {
             if (!_autoHideEnabled || _isHidden || IsAnyContextMenuOpen())
                 return;
-            if (DockContainer.IsMouseOver || HotEdge.IsMouseOver)
+            if (IsCursorOverDockUi())
                 return;
             StartHideTimer();
         }, DispatcherPriority.ApplicationIdle);
@@ -289,6 +294,7 @@ public partial class MainWindow : Window
 
         _hideTimer.Stop();
         _edgeProbeTimer.Stop();
+        _leaveProbeTimer.Stop();
         _recycleBinTimer.Stop();
         _clockTimer.Stop();
         _outsideClickTimer.Stop();
@@ -812,7 +818,11 @@ public partial class MainWindow : Window
         var image = new Image
         {
             Source = item.Icon,
+            Width = state.IconSurface.Width > 0 ? state.IconSurface.Width - 4 : double.NaN,
+            Height = state.IconSurface.Height > 0 ? state.IconSurface.Height - 4 : double.NaN,
             Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(2),
             SnapsToDevicePixels = false,
             UseLayoutRounding = false
@@ -882,9 +892,32 @@ public partial class MainWindow : Window
         _hideTimer.Stop();
         if (IsAnyContextMenuOpen())
             return;
-        if (DockContainer.IsMouseOver || HotEdge.IsMouseOver)
+        // 不可用 IsMouseOver：游標到其他螢幕時可能仍為 true，導致永遠不縮回
+        if (IsCursorOverDockUi())
             return;
         HideDock();
+    }
+
+    private void LeaveProbeTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_autoHideEnabled || _isHidden || _isAnimating)
+        {
+            _leaveProbeTimer.Stop();
+            return;
+        }
+
+        if (IsAnyContextMenuOpen())
+            return;
+
+        if (IsCursorOverDockUi())
+        {
+            CancelHideTimer();
+            return;
+        }
+
+        // 游標已不在此 Dock（含移到其他螢幕），確保開始隱藏倒數
+        if (!_hideTimer.IsEnabled)
+            StartHideTimer();
     }
 
     private void EdgeProbeTimer_Tick(object? sender, EventArgs e)
@@ -900,6 +933,24 @@ public partial class MainWindow : Window
             CancelHideTimer();
             ShowDock();
         }
+    }
+
+    /// <summary>以實際游標座標判斷是否在本 Dock 視窗上（比 IsMouseOver 可靠）。</summary>
+    private bool IsCursorOverDockUi()
+    {
+        if (!GetCursorPos(out POINT cursor))
+            return false;
+
+        IntPtr ours = new WindowInteropHelper(this).Handle;
+        if (ours == IntPtr.Zero)
+            return false;
+
+        IntPtr hit = WindowFromPoint(cursor);
+        if (hit == IntPtr.Zero)
+            return false;
+
+        IntPtr root = GetAncestor(hit, GaRoot);
+        return hit == ours || root == ours;
     }
 
     private void StartHideTimer()
@@ -1011,7 +1062,7 @@ public partial class MainWindow : Window
         DisarmOutsideClickWatcher();
         WindowActivationGuard.EndInteractive(this);
 
-        bool overDock = DockContainer.IsMouseOver || HotEdge.IsMouseOver;
+        bool overDock = IsCursorOverDockUi();
         if (overDock)
             return;
 
@@ -1270,6 +1321,8 @@ public partial class MainWindow : Window
 
         _isHidden = false;
         _edgeProbeTimer.Stop();
+        if (_autoHideEnabled)
+            _leaveProbeTimer.Start();
         AnimateDockTranslate(0, 0, onCompleted: null);
     }
 
@@ -1299,6 +1352,7 @@ public partial class MainWindow : Window
 
         _isHidden = true;
         _fisheyeTracking = false;
+        _leaveProbeTimer.Stop();
         foreach (var icon in _icons)
         {
             AnimateScaleTo(icon, 1.0);
@@ -2857,11 +2911,17 @@ public partial class MainWindow : Window
         if (!_autoHideEnabled)
         {
             CancelHideTimer();
+            _leaveProbeTimer.Stop();
             ShowDock();
         }
-        else if (!DockContainer.IsMouseOver && !HotEdge.IsMouseOver)
+        else if (!IsCursorOverDockUi())
         {
+            _leaveProbeTimer.Start();
             StartHideTimer();
+        }
+        else
+        {
+            _leaveProbeTimer.Start();
         }
     }
 

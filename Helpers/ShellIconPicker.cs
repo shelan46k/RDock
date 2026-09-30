@@ -72,12 +72,15 @@ public static class ShellIconPicker
                     return null;
             }
 
-            var source = Imaging.CreateBitmapSourceFromHIcon(
+            var raw = Imaging.CreateBitmapSourceFromHIcon(
                 icons[0],
                 Int32Rect.Empty,
-                BitmapSizeOptions.FromWidthAndHeight(size, size));
-            source.Freeze();
-            return source;
+                BitmapSizeOptions.FromEmptyOptions());
+
+            // 去掉透明邊並放大到目標尺寸，避免「格子很大、圖示很小」
+            var normalized = IconImageHelper.NormalizeToSquare(raw, size);
+            normalized.Freeze();
+            return normalized;
         }
         catch
         {
