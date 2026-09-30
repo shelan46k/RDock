@@ -4,7 +4,7 @@
 ; 輸出：publish\installer\RDock-Setup-1.0.0.exe
 
 #define MyAppName "RDock"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "Rank"
 #define MyAppURL "https://github.com/shelan46k/RDock"
 #define MyAppExeName "RDock.exe"

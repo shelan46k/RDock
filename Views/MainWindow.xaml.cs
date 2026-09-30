@@ -1892,6 +1892,24 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
         }
 
+        if (item.IsFolder || item.Kind == DockItemKind.Folder)
+        {
+            var openFolder = new MenuItem { Header = "在檔案總管開啟", Tag = item };
+            openFolder.Click += async (_, _) => await LaunchOrActivateAsync(item).ConfigureAwait(true);
+
+            var stack = new MenuItem { Header = "開啟資料夾堆疊", Tag = item };
+            stack.Click += (_, _) =>
+            {
+                Border? host = _icons.FirstOrDefault(b => GetItem(b)?.Id == item.Id);
+                if (host?.Tag is IconViewState st)
+                    ShowFolderStack(st);
+            };
+
+            menu.Items.Add(openFolder);
+            menu.Items.Add(stack);
+            menu.Items.Add(new Separator());
+        }
+
         var openLocation = new MenuItem { Header = "開啟檔案位置", Tag = item };
         openLocation.Click += MenuOpenLocation_Click;
 
@@ -2405,9 +2423,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 資料夾：直接用檔案總管開啟；堆疊改由右鍵選單
         if (item.IsFolder || item.Kind == DockItemKind.Folder)
         {
-            ShowFolderStack(state);
+            await LaunchOrActivateAsync(item).ConfigureAwait(true);
             return;
         }
 
@@ -2437,18 +2456,27 @@ public partial class MainWindow : Window
         CancelHideTimer();
         ShowDock();
 
+        // 開啟堆疊時暫時允許互動，否則子視窗難取得焦點／難點外面關閉
+        WindowActivationGuard.EnsureInteractive(this);
+
         Point topLeft = state.Host.PointToScreen(new Point(0, 0));
-        Point bottomCenter = new(
+        Point topCenter = new(
             topLeft.X + state.Host.ActualWidth / 2.0,
             topLeft.Y);
 
         // PointToScreen 回傳的是裝置像素；WPF Window Left/Top 要 DIP
         DpiScale dpi = VisualTreeHelper.GetDpi(this);
-        var anchorDip = new Point(bottomCenter.X / dpi.DpiScaleX, bottomCenter.Y / dpi.DpiScaleY);
+        var anchorDip = new Point(topCenter.X / dpi.DpiScaleX, topCenter.Y / dpi.DpiScaleY);
 
         _folderStack = FolderStackWindow.ShowForFolder(folder, anchorDip, this);
         if (_folderStack is not null)
-            _folderStack.Closed += (_, _) => _folderStack = null;
+        {
+            _folderStack.Closed += (_, _) =>
+            {
+                _folderStack = null;
+                WindowActivationGuard.EndInteractive(this);
+            };
+        }
     }
 
     /// <summary>
@@ -2930,28 +2958,65 @@ public partial class MainWindow : Window
 
     public void PinExecutable(string path)
     {
+        TryPinPath(path, out _);
+    }
+
+    /// <summary>
+    /// 將任意路徑釘到 Dock：exe／捷徑／資料夾／shell: 虛擬項目。
+    /// </summary>
+    public bool TryPinPath(string path, out string? error)
+    {
+        error = null;
         try
         {
-            if (IsPathPinned(path))
-                return;
+            path = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                error = "路徑為空。";
+                return false;
+            }
+
+            bool isShell = ShellIconHelper.IsShellItemPath(path);
+            bool exists = File.Exists(path) || Directory.Exists(path);
+            if (!isShell && !exists)
+            {
+                error = $"找不到路徑：\n{path}";
+                return false;
+            }
+
+            if (IsPathPinned(path) || IsShellPathPinned(path))
+            {
+                error = "此項目已在 Dock 上。";
+                return false;
+            }
 
             DockItem item = ShellIconHelper.CreateDockItemFromPath(path);
             int insertAt = _icons.Count;
+            int thisPcIdx = _items.FindIndex(i => i.IsThisPC);
             int recycleIdx = _items.FindIndex(i => i.IsRecycleBin);
             int clockIdx = _items.FindIndex(i => i.IsClock);
-            if (recycleIdx >= 0) insertAt = recycleIdx;
+            if (thisPcIdx >= 0) insertAt = thisPcIdx;
+            else if (recycleIdx >= 0) insertAt = recycleIdx;
             else if (clockIdx >= 0) insertAt = clockIdx;
 
             InsertDockItem(item, insertAt, persist: true);
             _ = LoadSingleIconAsync(item);
             RecenterOnWorkArea();
+            return true;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"無法釘選程式：\n{ex.Message}", "RDock",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            error = ex.Message;
+            return false;
         }
     }
+
+    private bool IsShellPathPinned(string path) =>
+        _items.Any(i =>
+            !i.IsDocklet &&
+            (string.Equals(i.TargetPath, path, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(i.SourcePath, path, StringComparison.OrdinalIgnoreCase)));
+
 
     private void MenuOpenSettings_Click(object sender, RoutedEventArgs e)
     {
@@ -2973,6 +3038,7 @@ public partial class MainWindow : Window
         _settingsWindow = new SettingsWindow(this);
         _settingsWindow.Owner = this;
         _settingsWindow.Show();
+        WindowPlacement.CenterOnScreen(_settingsWindow, this);
         _settingsWindow.Activate();
     }
 
@@ -3211,44 +3277,106 @@ public partial class MainWindow : Window
         if (sender is not MenuItem { Tag: DockItem item })
             return;
 
-        var dialog = new OpenFileDialog
-        {
-            Title = "選擇自訂圖示",
-            Filter = "影像檔|*.png;*.ico;*.jpg;*.jpeg;*.bmp;*.gif|所有檔案|*.*",
-            CheckFileExists = true
-        };
+        bool canReset = !string.IsNullOrWhiteSpace(item.IconCachePath) &&
+                        IconCacheService.IsUnderCustomDirectory(item.IconCachePath);
 
-        if (dialog.ShowDialog(this) != true)
+        var chooser = new CustomIconDialog(canReset) { Owner = this };
+        if (chooser.ShowDialog() != true)
             return;
 
         try
         {
-            string oldCache = item.IconCachePath ?? string.Empty;
-            string imported = await DockConfigStore.ImportCustomIconAsync(dialog.FileName, item.Id);
-            item.IconCachePath = imported;
-
-            ImageSource? icon = await Task.Run(() => DockConfigStore.LoadIconFromCache(imported));
-            if (icon is null)
-                icon = await Task.Run(() => ShellIconHelper.GetHighDpiIcon(imported));
-
-            if (icon is not null)
+            switch (chooser.Choice)
             {
-                item.Icon = icon;
-                Border? border = _icons.FirstOrDefault(b => GetItem(b)?.Id == item.Id);
-                if (border is not null)
-                    ApplyIconToBorder(border, item);
+                case CustomIconChoice.SystemIcons:
+                    await ApplySystemPickedIconAsync(item).ConfigureAwait(true);
+                    break;
+                case CustomIconChoice.ImageFile when !string.IsNullOrWhiteSpace(chooser.SelectedImagePath):
+                    await ApplyImageFileIconAsync(item, chooser.SelectedImagePath!).ConfigureAwait(true);
+                    break;
+                case CustomIconChoice.ResetDefault:
+                    await ResetItemIconAsync(item).ConfigureAwait(true);
+                    break;
             }
-
-            if (!string.Equals(oldCache, imported, StringComparison.OrdinalIgnoreCase))
-                DockConfigStore.TryDeleteIconCache(oldCache);
-
-            ScheduleSave();
         }
         catch (Exception ex)
         {
             MessageBox.Show($"無法套用自訂圖示：\n{ex.Message}", "RDock",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private async Task ApplySystemPickedIconAsync(DockItem item)
+    {
+        if (!ShellIconPicker.TryPick(this, out string iconFile, out int iconIndex))
+            return;
+
+        BitmapSource? bitmap = await Task.Run(() =>
+            ShellIconPicker.ExtractIcon(iconFile, iconIndex, 256)).ConfigureAwait(true);
+
+        if (bitmap is null)
+        {
+            MessageBox.Show("無法擷取所選圖示。", "RDock",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string oldCache = item.IconCachePath ?? string.Empty;
+        string dest = Path.Combine(
+            IconCacheService.CustomDirectory,
+            $"{item.Id}_custom.png");
+        string imported = await IconCacheService.SaveToPathAsync(bitmap, dest).ConfigureAwait(true);
+        await ApplyCustomIconPathAsync(item, imported, oldCache).ConfigureAwait(true);
+    }
+
+    private async Task ApplyImageFileIconAsync(DockItem item, string sourceFile)
+    {
+        string oldCache = item.IconCachePath ?? string.Empty;
+        string imported = await DockConfigStore.ImportCustomIconAsync(sourceFile, item.Id)
+            .ConfigureAwait(true);
+        await ApplyCustomIconPathAsync(item, imported, oldCache).ConfigureAwait(true);
+    }
+
+    private async Task ResetItemIconAsync(DockItem item)
+    {
+        string oldCache = item.IconCachePath ?? string.Empty;
+        item.IconCachePath = null;
+        item.Icon = null;
+
+        ImageSource? icon = await Task.Run(() =>
+            ShellIconHelper.ResolveIcon(item, IconDecodeSize)).ConfigureAwait(true);
+        item.Icon = icon;
+
+        Border? border = _icons.FirstOrDefault(b => GetItem(b)?.Id == item.Id);
+        if (border is not null)
+            ApplyIconToBorder(border, item);
+
+        DockConfigStore.TryDeleteIconCache(oldCache);
+        ScheduleSave();
+    }
+
+    private async Task ApplyCustomIconPathAsync(DockItem item, string imported, string oldCache)
+    {
+        item.IconCachePath = imported;
+
+        ImageSource? icon = await Task.Run(() => DockConfigStore.LoadIconFromCache(imported))
+            .ConfigureAwait(true);
+        if (icon is null)
+            icon = await Task.Run(() => ShellIconHelper.GetHighDpiIcon(imported))
+                .ConfigureAwait(true);
+
+        if (icon is not null)
+        {
+            item.Icon = icon;
+            Border? border = _icons.FirstOrDefault(b => GetItem(b)?.Id == item.Id);
+            if (border is not null)
+                ApplyIconToBorder(border, item);
+        }
+
+        if (!string.Equals(oldCache, imported, StringComparison.OrdinalIgnoreCase))
+            DockConfigStore.TryDeleteIconCache(oldCache);
+
+        ScheduleSave();
     }
 
     private void MenuRemove_Click(object sender, RoutedEventArgs e)

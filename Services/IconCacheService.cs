@@ -246,6 +246,25 @@ public static class IconCacheService
         }
     }
 
+    /// <summary>是否為使用者自訂圖示路徑（可還原預設）。</summary>
+    public static bool IsUnderCustomDirectory(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        try
+        {
+            string full = Path.GetFullPath(path);
+            string custom = Path.GetFullPath(CustomDirectory);
+            return full.StartsWith(custom, StringComparison.OrdinalIgnoreCase) ||
+                   path.Contains("_custom", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return path.Contains("_custom", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private static bool IsLikelyCustomOrLegacyCache(string path)
     {
         if (path.Contains("_custom", StringComparison.OrdinalIgnoreCase))

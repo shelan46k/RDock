@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Microsoft.Win32;
 
 namespace RDock;
 
@@ -16,6 +17,25 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         LoadFromDock();
         _loading = false;
+    }
+
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        // 限制不超出螢幕，但優先完整顯示；置中於 Dock 所在螢幕
+        double workH = SystemParameters.WorkArea.Height;
+        try
+        {
+            // 以擁有者螢幕為準（多螢幕）
+            MaxHeight = Math.Max(600, workH * 0.92);
+        }
+        catch
+        {
+            MaxHeight = 900;
+        }
+
+        // 強制量測後再置中，避免高度尚未算出
+        UpdateLayout();
+        WindowPlacement.CenterOnScreen(this, _dock);
     }
 
     private void LoadFromDock()
@@ -118,6 +138,55 @@ public partial class SettingsWindow : Window
         _dock.SetShowClock(CheckClock.IsChecked == true);
         _dock.SetEnableAppBar(CheckAppBar.IsChecked == true);
         _dock.SetFisheyePush(CheckFisheyePush.IsChecked == true);
+    }
+
+    private void BrowsePath_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "選擇要釘選的程式、捷徑或檔案",
+            Filter =
+                "程式與捷徑 (*.exe;*.lnk)|*.exe;*.lnk|" +
+                "所有檔案 (*.*)|*.*",
+            CheckFileExists = true
+        };
+
+        if (dlg.ShowDialog(this) == true)
+            TextPinPath.Text = dlg.FileName;
+    }
+
+    private void TextPinPath_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            PinEnteredPath();
+            e.Handled = true;
+        }
+    }
+
+    private void PinPath_Click(object sender, RoutedEventArgs e) => PinEnteredPath();
+
+    private void PinEnteredPath()
+    {
+        string path = TextPinPath.Text?.Trim().Trim('"') ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            MessageBox.Show("請先輸入或瀏覽路徑。", "RDock",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (_dock.TryPinPath(path, out string? error))
+        {
+            TextPinPath.Clear();
+            RefreshRunningApps();
+            MessageBox.Show("已加入 Dock。", "RDock",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        MessageBox.Show(error ?? "無法加入此路徑。", "RDock",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void PinSelected_Click(object sender, RoutedEventArgs e) => PinSelected();

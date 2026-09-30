@@ -1,0 +1,94 @@
+<Window x:Class="RDock.CustomIconDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="自訂圖示"
+        Width="420"
+        MinWidth="380"
+        SizeToContent="Height"
+        WindowStartupLocation="Manual"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="{StaticResource Brush.Bg}"
+        FontFamily="{StaticResource AppFont}"
+        Loaded="Window_Loaded">
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource Brush.Surface}"
+                BorderBrush="{StaticResource Brush.Border}"
+                BorderThickness="0,0,0,1"
+                Padding="22,16">
+            <StackPanel>
+                <TextBlock Text="自訂圖示" Style="{StaticResource Text.Title}" Margin="0"/>
+                <TextBlock Text="選擇系統圖示或上傳自己的影像檔" Style="{StaticResource Text.Muted}" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource Brush.Surface}"
+                BorderBrush="{StaticResource Brush.Border}"
+                BorderThickness="0,1,0,0"
+                Padding="22,14">
+            <Button Content="取消"
+                    Style="{StaticResource Btn.Ghost}"
+                    Width="100"
+                    HorizontalAlignment="Right"
+                    IsCancel="True"
+                    Click="Cancel_Click"/>
+        </Border>
+
+        <StackPanel Margin="22,18">
+            <Button Style="{StaticResource Btn.Card}"
+                    Margin="0,0,0,10"
+                    Click="SystemIcons_Click">
+                <StackPanel>
+                    <TextBlock Text="系統圖示…"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.Text}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="與 Windows「變更圖示」相同，可瀏覽 imageres、shell32 等。"
+                               FontSize="12"
+                               Foreground="{StaticResource Brush.TextMuted}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+            </Button>
+
+            <Button Style="{StaticResource Btn.Card}"
+                    Margin="0,0,0,10"
+                    Click="ImageFile_Click">
+                <StackPanel>
+                    <TextBlock Text="從影像檔…"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.Text}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="選擇 png、ico、jpg、bmp、gif 等自訂圖片。"
+                               FontSize="12"
+                               Foreground="{StaticResource Brush.TextMuted}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+            </Button>
+
+            <Button x:Name="ResetButton"
+                    Style="{StaticResource Btn.Card}"
+                    Click="Reset_Click">
+                <StackPanel>
+                    <TextBlock Text="還原預設圖示"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.Text}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="清除自訂圖示，改回程式原本的圖示。"
+                               FontSize="12"
+                               Foreground="{StaticResource Brush.TextMuted}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </DockPanel>
+</Window>
