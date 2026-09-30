@@ -17,6 +17,7 @@
         SourceInitialized="Window_SourceInitialized"
         Loaded="Window_Loaded"
         Closing="Window_Closing"
+        DragEnter="Window_DragEnter"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         RenderOptions.BitmapScalingMode="HighQuality"
@@ -76,6 +77,7 @@
                     MouseEnter="DockContainer_MouseEnter"
                     MouseMove="DockContainer_MouseMove"
                     MouseLeave="DockContainer_MouseLeave"
+                    DragEnter="DockContainer_DragEnter"
                     DragOver="DockContainer_DragOver"
                     Drop="DockContainer_Drop"
                     Cursor="Hand">

@@ -43,6 +43,7 @@ public partial class SettingsWindow : Window
         OpacityValueText.Text = $"{(int)SliderOpacity.Value}%";
 
         CheckRecycleBin.IsChecked = _dock.SettingsShowRecycleBin;
+        CheckThisPC.IsChecked = _dock.SettingsShowThisPC;
         CheckClock.IsChecked = _dock.SettingsShowClock;
         CheckAppBar.IsChecked = _dock.SettingsEnableAppBar;
         CheckFisheyePush.IsChecked = _dock.SettingsFisheyePush;
@@ -113,6 +114,7 @@ public partial class SettingsWindow : Window
             return;
 
         _dock.SetShowRecycleBin(CheckRecycleBin.IsChecked == true);
+        _dock.SetShowThisPC(CheckThisPC.IsChecked == true);
         _dock.SetShowClock(CheckClock.IsChecked == true);
         _dock.SetEnableAppBar(CheckAppBar.IsChecked == true);
         _dock.SetFisheyePush(CheckFisheyePush.IsChecked == true);

@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     private bool _autoHideEnabled = true;
     private double _dockOpacity = 0.80;
     private bool _showRecycleBin = true;
+    private bool _showThisPC;
     private bool _showClock;
     private bool _enableAppBar;
     private bool _fisheyePush = true;
@@ -163,6 +164,7 @@ public partial class MainWindow : Window
         _hideDelay = TimeSpan.FromMilliseconds(config.HideDelayMs);
         _dockOpacity = config.DockOpacity;
         _showRecycleBin = config.ShowRecycleBin;
+        _showThisPC = config.ShowThisPC;
         _showClock = config.ShowClock;
         _enableAppBar = config.EnableAppBar;
         _fisheyePush = config.FisheyePushEnabled;
@@ -248,6 +250,7 @@ public partial class MainWindow : Window
         DockManager.SharedProcessWatcher.Updated += OnProcessesUpdated;
 
         await LoadConfigAndIconsAsync();
+        EnsureThisPCItem();
         EnsureRecycleBinItem();
         EnsureClockItem();
         RefreshRunningIndicators();
@@ -541,6 +544,15 @@ public partial class MainWindow : Window
         SourcePath = ShellRecycleBin.ParsingName
     };
 
+    private static DockItem CreateThisPCDockItem() => new()
+    {
+        Id = DockItem.ThisPCItemId,
+        Title = ShellThisPC.DisplayTitle,
+        TargetPath = ShellThisPC.ShellFolderPath,
+        Kind = DockItemKind.ThisPC,
+        SourcePath = ShellThisPC.ParsingName
+    };
+
     private static DockItem CreateClockDockItem() => new()
     {
         Id = DockItem.ClockItemId,
@@ -556,6 +568,39 @@ public partial class MainWindow : Window
         TargetPath = string.Empty,
         Kind = DockItemKind.Separator
     };
+
+    /// <summary>依設定確保／移除本機。</summary>
+    private void EnsureThisPCItem()
+    {
+        int existing = _items.FindIndex(i => i.IsThisPC);
+        if (!_showThisPC)
+        {
+            if (existing >= 0)
+                RemoveItemAt(existing, persist: true, allowDocklets: true);
+            return;
+        }
+
+        if (existing >= 0)
+        {
+            _items[existing].Kind = DockItemKind.ThisPC;
+            _items[existing].Id = DockItem.ThisPCItemId;
+            _items[existing].Title = ShellThisPC.DisplayTitle;
+            _items[existing].TargetPath = ShellThisPC.ShellFolderPath;
+            _items[existing].SourcePath = ShellThisPC.ParsingName;
+            return;
+        }
+
+        int insertAt = _icons.Count;
+        int recycleIdx = _items.FindIndex(i => i.IsRecycleBin);
+        int clockIdx = _items.FindIndex(i => i.IsClock);
+        if (recycleIdx >= 0)
+            insertAt = recycleIdx;
+        else if (clockIdx >= 0)
+            insertAt = clockIdx;
+
+        InsertDockItem(CreateThisPCDockItem(), insertAt, persist: true);
+        _ = LoadSingleIconAsync(_items[Math.Min(insertAt, _items.Count - 1)]);
+    }
 
     /// <summary>依設定確保／移除資源回收筒。</summary>
     private void EnsureRecycleBinItem()
@@ -669,6 +714,7 @@ public partial class MainWindow : Window
         HideDelayMs = (int)_hideDelay.TotalMilliseconds,
         DockOpacity = _dockOpacity,
         ShowRecycleBin = _showRecycleBin,
+        ShowThisPC = _showThisPC,
         ShowClock = _showClock,
         EnableAppBar = _enableAppBar,
         FisheyePushEnabled = _fisheyePush,
@@ -1368,10 +1414,21 @@ public partial class MainWindow : Window
     //  Drag & Drop
     // ══════════════════════════════════════════════════════════
 
+    private void Window_DragEnter(object sender, DragEventArgs e) => HandleDragEnter(e);
+    private void DockContainer_DragEnter(object sender, DragEventArgs e) => HandleDragEnter(e);
     private void Window_DragOver(object sender, DragEventArgs e) => HandleDragOver(e);
     private void DockContainer_DragOver(object sender, DragEventArgs e) => HandleDragOver(e);
     private void Window_Drop(object sender, DragEventArgs e) => HandleDrop(e);
     private void DockContainer_Drop(object sender, DragEventArgs e) => HandleDrop(e);
+
+    private void HandleDragEnter(DragEventArgs e)
+    {
+        // NOACTIVATE 會干擾 OLE 拖放；拖入時暫時允許互動
+        WindowActivationGuard.EnsureInteractive(this);
+        CancelHideTimer();
+        ShowDock();
+        HandleDragOver(e);
+    }
 
     private void HandleDragOver(DragEventArgs e)
     {
@@ -1382,7 +1439,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        if (ShellDropHelper.CanAccept(e.Data))
         {
             e.Effects = DragDropEffects.Copy;
             e.Handled = true;
@@ -1390,16 +1447,20 @@ public partial class MainWindow : Window
         }
 
         e.Effects = DragDropEffects.None;
+        e.Handled = true;
     }
 
     private void HandleDrop(DragEventArgs e)
     {
-        // 圖示上的檔案拖放由 Icon_Drop 處理並標記 Handled
+        // 僅「真實檔案」拖到圖示上時交給 Icon_Drop（開啟／丟回收筒）；
+        // Shell 虛擬項目（本機等）一律釘到 Dock。
         if (e.OriginalSource is DependencyObject source)
         {
             var host = FindAncestorBorderWithState(source);
-            if (host is not null && e.Data.GetDataPresent(DataFormats.FileDrop) &&
-                !e.Data.GetDataPresent(DockItemDragFormat))
+            if (host is not null &&
+                e.Data.GetDataPresent(DataFormats.FileDrop) &&
+                !e.Data.GetDataPresent(DockItemDragFormat) &&
+                !HasShellOnlyItems(e.Data))
             {
                 return;
             }
@@ -1424,11 +1485,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        var paths = ShellDropHelper.ExtractPaths(e.Data);
+        if (paths.Count == 0)
+        {
+            Debug.WriteLine("[RDock] Drop: no extractable paths. Formats=" +
+                            string.Join(", ", SafeGetFormats(e.Data)));
             return;
-
-        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0)
-            return;
+        }
 
         if (_isLocked)
             insertIndex = _icons.Count;
@@ -1438,12 +1501,15 @@ public partial class MainWindow : Window
             if (string.IsNullOrWhiteSpace(path))
                 continue;
 
-            if (!File.Exists(path) && !Directory.Exists(path))
+            bool existsOnDisk = File.Exists(path) || Directory.Exists(path);
+            if (!existsOnDisk && !ShellIconHelper.IsShellItemPath(path) &&
+                !LooksLikeShellUrl(path))
                 continue;
 
             try
             {
-                DockItem item = ShellIconHelper.CreateDockItemFromPath(path);
+                string normalized = NormalizeDroppedPath(path);
+                DockItem item = ShellIconHelper.CreateDockItemFromPath(normalized);
                 InsertDockItem(item, insertIndex, persist: true);
                 insertIndex++;
                 _ = LoadSingleIconAsync(item);
@@ -1460,6 +1526,47 @@ public partial class MainWindow : Window
         }
 
         RecenterOnWorkArea();
+    }
+
+    private static bool HasShellOnlyItems(System.Windows.IDataObject data)
+    {
+        var paths = ShellDropHelper.ExtractPaths(data);
+        if (paths.Count == 0)
+            return false;
+
+        return paths.All(p =>
+            ShellIconHelper.IsShellItemPath(p) || LooksLikeShellUrl(p) ||
+            (!File.Exists(p) && !Directory.Exists(p)));
+    }
+
+    private static bool LooksLikeShellUrl(string path) =>
+        path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("::{", StringComparison.Ordinal) ||
+        path.Contains("::{", StringComparison.Ordinal);
+
+    private static string NormalizeDroppedPath(string path)
+    {
+        // file:///C:/... → C:\...
+        if (path.StartsWith("file:", StringComparison.OrdinalIgnoreCase) &&
+            Uri.TryCreate(path, UriKind.Absolute, out Uri? uri) &&
+            uri.IsFile)
+        {
+            return uri.LocalPath;
+        }
+
+        return path;
+    }
+
+    private static IEnumerable<string> SafeGetFormats(System.Windows.IDataObject data)
+    {
+        try
+        {
+            return data.GetFormats(autoConvert: false);
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     private static Border? FindAncestorBorderWithState(DependencyObject? current)
@@ -1601,7 +1708,7 @@ public partial class MainWindow : Window
         };
 
         var indicator = IconBounceAnimation.CreateIndicatorDot();
-        if (item.IsClock || item.IsRecycleBin)
+        if (item.IsClock || item.IsRecycleBin || item.IsThisPC)
             indicator.Visibility = Visibility.Collapsed;
 
         var layout = new Grid
@@ -1746,6 +1853,16 @@ public partial class MainWindow : Window
             menu.Items.Add(open);
             menu.Items.Add(new Separator());
             menu.Items.Add(empty);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(BuildRDockSettingsSubMenu());
+            return menu;
+        }
+
+        if (item.IsThisPC)
+        {
+            var openPc = new MenuItem { Header = "開啟本機", Tag = item };
+            openPc.Click += (_, _) => ShellThisPC.OpenInExplorer();
+            menu.Items.Add(openPc);
             menu.Items.Add(new Separator());
             menu.Items.Add(BuildRDockSettingsSubMenu());
             return menu;
@@ -1965,6 +2082,15 @@ public partial class MainWindow : Window
         };
         recycle.Click += MenuShowRecycleBin_Click;
         items.Add(recycle);
+
+        var thisPc = new MenuItem
+        {
+            Header = "顯示本機",
+            IsCheckable = true,
+            IsChecked = _showThisPC
+        };
+        thisPc.Click += MenuShowThisPC_Click;
+        items.Add(thisPc);
 
         var clock = new MenuItem
         {
@@ -2270,6 +2396,12 @@ public partial class MainWindow : Window
         if (item.IsRecycleBin)
         {
             await Task.Run(ShellRecycleBin.OpenInExplorer).ConfigureAwait(true);
+            return;
+        }
+
+        if (item.IsThisPC)
+        {
+            await Task.Run(ShellThisPC.OpenInExplorer).ConfigureAwait(true);
             return;
         }
 
@@ -2732,6 +2864,7 @@ public partial class MainWindow : Window
     public int SettingsHideDelayMs => (int)_hideDelay.TotalMilliseconds;
     public double SettingsDockOpacity => _dockOpacity;
     public bool SettingsShowRecycleBin => _showRecycleBin;
+    public bool SettingsShowThisPC => _showThisPC;
     public bool SettingsShowClock => _showClock;
     public bool SettingsEnableAppBar => _enableAppBar;
     public bool SettingsFisheyePush => _fisheyePush;
@@ -2746,6 +2879,15 @@ public partial class MainWindow : Window
         if (_showRecycleBin == show) return;
         _showRecycleBin = show;
         EnsureRecycleBinItem();
+        ScheduleSave();
+        RecenterOnWorkArea();
+    }
+
+    public void SetShowThisPC(bool show)
+    {
+        if (_showThisPC == show) return;
+        _showThisPC = show;
+        EnsureThisPCItem();
         ScheduleSave();
         RecenterOnWorkArea();
     }
@@ -2894,6 +3036,15 @@ public partial class MainWindow : Window
         RecenterOnWorkArea();
     }
 
+    private void MenuShowThisPC_Click(object sender, RoutedEventArgs e)
+    {
+        bool show = sender is MenuItem { IsCheckable: true } mi && mi.IsChecked;
+        _showThisPC = show;
+        EnsureThisPCItem();
+        ScheduleSave();
+        RecenterOnWorkArea();
+    }
+
     private void MenuShowClock_Click(object sender, RoutedEventArgs e)
     {
         bool show = sender is MenuItem { IsCheckable: true } mi && mi.IsChecked;
@@ -2942,6 +3093,7 @@ public partial class MainWindow : Window
         foreach (DockItem item in snapshot)
             InsertDockItem(item, _icons.Count, persist: false);
 
+        EnsureThisPCItem();
         EnsureRecycleBinItem();
         EnsureClockItem();
         RefreshRunningIndicators();
@@ -2957,7 +3109,7 @@ public partial class MainWindow : Window
             return;
 
         DockItem item = _items[index];
-        if (!allowDocklets && item.IsRecycleBin)
+        if (!allowDocklets && (item.IsRecycleBin || item.IsThisPC))
             return;
 
         _items.RemoveAt(index);
@@ -3104,7 +3256,7 @@ public partial class MainWindow : Window
         if (sender is not MenuItem { Tag: DockItem item })
             return;
 
-        if (item.IsRecycleBin || item.IsClock)
+        if (item.IsRecycleBin || item.IsThisPC || item.IsClock)
         {
             MessageBox.Show("此為固定 Docklet，請從設定開關顯示。", "RDock",
                 MessageBoxButton.OK, MessageBoxImage.Information);

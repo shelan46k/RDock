@@ -58,6 +58,8 @@
 
             <CheckBox x:Name="CheckRecycleBin" Content="顯示資源回收筒" Margin="0,4,0,6"
                       Checked="CheckFlags_Changed" Unchecked="CheckFlags_Changed"/>
+            <CheckBox x:Name="CheckThisPC" Content="顯示本機" Margin="0,0,0,6"
+                      Checked="CheckFlags_Changed" Unchecked="CheckFlags_Changed"/>
             <CheckBox x:Name="CheckClock" Content="顯示時鐘" Margin="0,0,0,6"
                       Checked="CheckFlags_Changed" Unchecked="CheckFlags_Changed"/>
             <CheckBox x:Name="CheckAppBar"

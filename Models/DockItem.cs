@@ -10,7 +10,8 @@ public enum DockItemKind
     Folder = 1,
     RecycleBin = 2,
     Separator = 3,
-    Clock = 4
+    Clock = 4,
+    ThisPC = 5
 }
 
 /// <summary>Dock 上的單一啟動項目（可序列化至 JSON）。</summary>
@@ -18,6 +19,7 @@ public sealed class DockItem
 {
     public const string RecycleBinItemId = "docklet-recycle-bin";
     public const string ClockItemId = "docklet-clock";
+    public const string ThisPCItemId = "docklet-this-pc";
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
@@ -42,9 +44,11 @@ public sealed class DockItem
 
     public bool IsClock => Kind == DockItemKind.Clock || Id == ClockItemId;
 
+    public bool IsThisPC => Kind == DockItemKind.ThisPC || Id == ThisPCItemId;
+
     public bool IsSeparator => Kind == DockItemKind.Separator;
 
-    public bool IsDocklet => IsRecycleBin || IsClock || IsSeparator;
+    public bool IsDocklet => IsRecycleBin || IsClock || IsSeparator || IsThisPC;
 
     public bool IsFolder =>
         Kind == DockItemKind.Folder ||
@@ -85,6 +89,9 @@ public sealed class DockConfig
 
     /// <summary>是否顯示資源回收筒。</summary>
     public bool ShowRecycleBin { get; set; } = true;
+
+    /// <summary>是否顯示本機（此電腦）。</summary>
+    public bool ShowThisPC { get; set; } = false;
 
     /// <summary>是否顯示時鐘 Docklet。</summary>
     public bool ShowClock { get; set; } = false;

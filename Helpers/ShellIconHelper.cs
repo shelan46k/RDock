@@ -101,7 +101,7 @@ public static class ShellIconHelper
     }
 
     /// <summary>
-    /// 從拖入路徑建立 DockItem（僅解析路徑／捷徑，圖示交由非同步載入）。
+    /// 從拖入路徑建立 DockItem（僅解析路徑／捷徑／Shell 虛擬項目，圖示交由非同步載入）。
     /// </summary>
     public static DockItem CreateDockItemFromPath(string path)
     {
@@ -121,6 +121,11 @@ public static class ShellIconHelper
 
             if (!string.IsNullOrWhiteSpace(shortcut.Description))
                 title = shortcut.Description!;
+        }
+        else if (IsShellItemPath(path))
+        {
+            targetPath = path;
+            title = TryGetShellDisplayName(path) ?? title;
         }
         else if (Directory.Exists(path))
         {
@@ -152,6 +157,48 @@ public static class ShellIconHelper
         };
     }
 
+    /// <summary>Shell 命名空間路徑（本機、控制台等），非一般檔案系統路徑。</summary>
+    public static bool IsShellItemPath(string path) =>
+        !string.IsNullOrWhiteSpace(path) &&
+        (path.StartsWith("::", StringComparison.Ordinal) ||
+         path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase) ||
+         path.Contains("::{", StringComparison.Ordinal));
+
+    public static string? TryGetShellDisplayName(string parsingName)
+    {
+        object? shellItemObj = null;
+        try
+        {
+            var iid = typeof(IShellItem).GUID;
+            int hr = SHCreateItemFromParsingName(parsingName, IntPtr.Zero, ref iid, out shellItemObj);
+            if (hr < 0 || shellItemObj is null)
+                return null;
+
+            var item = (IShellItem)shellItemObj;
+            item.GetDisplayName(SIGDN.NORMALDISPLAY, out IntPtr namePtr);
+            if (namePtr == IntPtr.Zero)
+                return null;
+
+            try
+            {
+                return Marshal.PtrToStringUni(namePtr);
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(namePtr);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (shellItemObj is not null)
+                Marshal.ReleaseComObject(shellItemObj);
+        }
+    }
+
     /// <summary>
     /// 解析圖示：優先 IconCacheService 磁碟快取 → Shell 提取並寫入快取。
     /// 可於背景執行緒呼叫（回傳的 BitmapSource 已 Freeze）。
@@ -163,6 +210,12 @@ public static class ShellIconHelper
         {
             bool full = ShellRecycleBin.QueryStatus().HasItems;
             return ShellRecycleBin.GetIcon(isFull: full);
+        }
+
+        if (item.IsThisPC)
+        {
+            return GetHighDpiIcon(ShellThisPC.ParsingName, Math.Max(256, preferredDecodeSize))
+                   ?? GetHighDpiIcon(ShellThisPC.ShellFolderPath, Math.Max(256, preferredDecodeSize));
         }
 
         int size = Math.Max(256, preferredDecodeSize);
@@ -220,6 +273,9 @@ public static class ShellIconHelper
 
     private static string GetFriendlyName(string path)
     {
+        if (IsShellItemPath(path))
+            return TryGetShellDisplayName(path) ?? path;
+
         if (Directory.Exists(path))
             return new DirectoryInfo(path).Name;
 
@@ -231,6 +287,12 @@ public static class ShellIconHelper
         string.IsNullOrWhiteSpace(value) ? null : value;
 
     // ── P/Invoke & COM ────────────────────────────────────────
+
+    private enum SIGDN : uint
+    {
+        NORMALDISPLAY = 0,
+        DESKTOPABSOLUTEPARSING = 0x80028000
+    }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     private static extern int SHCreateItemFromParsingName(
@@ -264,6 +326,18 @@ public static class ShellIconHelper
         ICONONLY = 0x04,
         THUMBNAILONLY = 0x08,
         INCACHEONLY = 0x10
+    }
+
+    [ComImport]
+    [Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItem
+    {
+        void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+        void GetParent(out IShellItem ppsi);
+        void GetDisplayName(SIGDN sigdnName, out IntPtr ppszName);
+        void GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
+        void Compare(IShellItem psi, uint hint, out int piOrder);
     }
 
     [ComImport]
