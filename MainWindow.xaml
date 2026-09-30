@@ -1,0 +1,144 @@
+﻿<Window x:Class="RDock.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RDock"
+        MinWidth="200"
+        Height="180"
+        SizeToContent="Width"
+        AllowsTransparency="True"
+        WindowStyle="None"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        AllowDrop="True"
+        SourceInitialized="Window_SourceInitialized"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        DragOver="Window_DragOver"
+        Drop="Window_Drop"
+        RenderOptions.BitmapScalingMode="HighQuality"
+        RenderOptions.CachingHint="Cache">
+
+    <Grid ClipToBounds="False">
+        <!-- 滑鼠指向圖示時顯示程式名稱（NOACTIVATE 下系統 ToolTip 常失效） -->
+        <Border x:Name="IconNameBadge"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Padding="12,5"
+                CornerRadius="10"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"
+                Panel.ZIndex="20">
+            <Border.Background>
+                <SolidColorBrush Color="#E6111118"/>
+            </Border.Background>
+            <Border.BorderBrush>
+                <SolidColorBrush Color="#55FFFFFF"/>
+            </Border.BorderBrush>
+            <Border.BorderThickness>1</Border.BorderThickness>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10"
+                                  ShadowDepth="1"
+                                  Opacity="0.45"
+                                  Color="#000000"
+                                  RenderingBias="Performance"/>
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="IconNameTranslate"/>
+            </Border.RenderTransform>
+            <TextBlock x:Name="IconNameText"
+                       Foreground="White"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       TextOptions.TextFormattingMode="Display"/>
+        </Border>
+
+        <Border x:Name="DockSlideHost"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Center"
+                CacheMode="BitmapCache"
+                RenderOptions.BitmapScalingMode="HighQuality">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="DockTranslate" Y="0"/>
+            </Border.RenderTransform>
+
+            <Border x:Name="DockContainer"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,0,12"
+                    Padding="18,14,18,10"
+                    CornerRadius="18"
+                    BorderThickness="1"
+                    AllowDrop="True"
+                    MouseEnter="DockContainer_MouseEnter"
+                    MouseMove="DockContainer_MouseMove"
+                    MouseLeave="DockContainer_MouseLeave"
+                    DragOver="DockContainer_DragOver"
+                    Drop="DockContainer_Drop"
+                    Cursor="Hand">
+                <Border.Background>
+                    <SolidColorBrush Color="#CC1A1A1E"/>
+                </Border.Background>
+                <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#55FFFFFF" Offset="0"/>
+                        <GradientStop Color="#22FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="12"
+                                      ShadowDepth="2"
+                                      Opacity="0.40"
+                                      Color="#000000"
+                                      RenderingBias="Performance"/>
+                </Border.Effect>
+
+                <!-- Dock 空白處右鍵選單 -->
+                <Border.ContextMenu>
+                    <ContextMenu StaysOpen="True"
+                                 Opened="DockContextMenu_Opened"
+                                 Closed="ContextMenu_Closed">
+                        <MenuItem x:Name="MenuLockItems"
+                                  Header="鎖定項目（禁止拖曳改變順序）"
+                                  IsCheckable="True"
+                                  Click="MenuLockItems_Click"/>
+                        <MenuItem x:Name="MenuAutoHide"
+                                  Header="自動隱藏"
+                                  IsCheckable="True"
+                                  Click="MenuAutoHide_Click"/>
+                        <MenuItem x:Name="MenuAutoStart"
+                                  Header="開機自動啟動"
+                                  IsCheckable="True"
+                                  Click="MenuAutoStart_Click"/>
+                        <MenuItem x:Name="MenuDockScreen"
+                                  Header="停靠螢幕"/>
+                        <MenuItem x:Name="MenuDockEdge"
+                                  Header="停靠位置"/>
+                        <MenuItem Header="更多設定…" Click="MenuOpenSettings_Click"/>
+                        <MenuItem Header="新增分隔線" Click="MenuAddSeparator_Click"/>
+                        <Separator/>
+                        <MenuItem x:Name="MenuVersion"
+                                  Header="版本"
+                                  IsEnabled="False"/>
+                        <MenuItem Header="關於我" Click="MenuAbout_Click"/>
+                        <MenuItem Header="結束程式" Click="MenuExit_Click"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+
+                <StackPanel x:Name="IconPanel"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Bottom"/>
+            </Border>
+        </Border>
+
+        <Border x:Name="HotEdge"
+                Height="3"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Stretch"
+                Background="#01FFFFFF"
+                MouseEnter="HotEdge_MouseEnter"/>
+    </Grid>
+</Window>

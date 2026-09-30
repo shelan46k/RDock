@@ -1,0 +1,51 @@
+<Window x:Class="RDock.FolderStackWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Folder Stack"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ShowActivated="False"
+        SizeToContent="WidthAndHeight"
+        Deactivated="Window_Deactivated"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <Border Margin="8"
+            Padding="14"
+            CornerRadius="16"
+            BorderThickness="1"
+            MaxWidth="420"
+            MaxHeight="360">
+        <Border.Background>
+            <SolidColorBrush Color="#F21A1A1E"/>
+        </Border.Background>
+        <Border.BorderBrush>
+            <SolidColorBrush Color="#44FFFFFF"/>
+        </Border.BorderBrush>
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="20"
+                              ShadowDepth="4"
+                              Opacity="0.45"
+                              Color="#000000"
+                              RenderingBias="Performance"/>
+        </Border.Effect>
+
+        <DockPanel>
+            <TextBlock x:Name="TitleText"
+                       DockPanel.Dock="Top"
+                       Margin="4,0,4,10"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Foreground="#EEFFFFFF"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <UniformGrid x:Name="FileGrid" Columns="4"/>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</Window>
