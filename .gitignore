@@ -55,6 +55,7 @@ $RECYCLE.BIN/
 *.pfx
 *.publishsettings
 appsettings.*.local.json
+/publish/
 
 # Test / coverage
 [Tt]est[Rr]esult*/

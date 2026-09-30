@@ -39,7 +39,7 @@ public static class AppInfo
 
         Version? v = asm.GetName().Version;
         if (v is null)
-            return "1.0.0";
+            return "1.0.1";
 
         return v.Revision > 0
             ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}"

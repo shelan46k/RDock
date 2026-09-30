@@ -9,13 +9,13 @@
     <!-- Per-Monitor V2：跨螢幕拖曳 / 解析度變更時各自獨立 DPI -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\RDock.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
-    <InformationalVersion>1.0.0</InformationalVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
+    <InformationalVersion>1.0.1</InformationalVersion>
     <Product>RDock</Product>
     <AssemblyTitle>RDock</AssemblyTitle>
-    <Description>macOS / RocketDock style dock for Windows</Description>
+    <Description>macOS style dock for Windows</Description>
   </PropertyGroup>
 
   <ItemGroup>

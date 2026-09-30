@@ -5,6 +5,18 @@ Windows 版類 macOS / RocketDock 風格的 Dock。
 
 ![RDock Icon](Assets/RDock-Icon.png)
 
+## 專案結構
+
+| 資料夾 | 內容 |
+|--------|------|
+| `Views/` | 主視窗、設定、資料夾堆疊 |
+| `Models/` | Dock 設定與項目模型 |
+| `Services/` | Dock 管理、監控、圖示快取等 |
+| `Helpers/` | Win32 / Shell / 動畫輔助 |
+| `Assets/` | 圖示資源 |
+| `installer/` | Inno Setup 安裝腳本 |
+| `scripts/` | 發佈腳本 |
+
 ## 功能
 
 - 魚眼放大、拖放新增捷徑／應用程式
@@ -30,6 +42,30 @@ dotnet run -c Release --project RDock.csproj
 
 ```text
 bin/Release/net8.0-windows/RDock.exe
+```
+
+## 發佈（單檔 + 安裝包）
+
+1. **單檔 exe**（自帶 .NET，對方不必另外安裝 runtime）：
+
+```powershell
+.\scripts\publish.ps1
+```
+
+產出：`publish\single\RDock.exe`
+
+2. **安裝包**：安裝 [Inno Setup 6](https://jrsoftware.org/isinfo.php)，開啟 `installer\RDock.iss` → Compile。  
+   產出：`publish\installer\RDock-Setup-1.0.0.exe`  
+   （改版本時請同步更新 `RDock.csproj` 的 `<Version>` 與 `.iss` 的 `#define MyAppVersion`。）
+
+3. **上傳到 GitHub Release**（需 [GitHub CLI](https://cli.github.com/)）：
+
+```powershell
+gh release create v1.0.0 `
+  .\publish\single\RDock.exe `
+  .\publish\installer\RDock-Setup-1.0.0.exe `
+  --title "RDock 1.0.0" `
+  --notes "單檔與安裝包"
 ```
 
 ## 設定與快取位置
